@@ -68,7 +68,10 @@ _expmem
 		ENDC
 _config
         dc.b    "C1:X:Trainer Infinite Energy & Lives:0;"
-		dc.b	0
+        dc.b    "C2:X:No collision between human players:0;"
+        dc.b    "C2:X:Strafe Mode while holding fire:1;"
+	dc.b	"C2:X:Dual Stick support w/parallel 4-joy adapter:2;"
+	dc.b	0
 
 ;============================================================================
 
@@ -260,6 +263,21 @@ pl_2_v1
     
     PL_PSS  $1A8F4,keyboard,4    ; quit key on 68000
 	PL_P	$1e4c0,wait_blit	; replace blitter wait
+
+; ztronzo patches START
+	PL_IFC2X	0
+	PL_B $118CA,$60  ; Allows player passthrough; 6b00009c BMI.W #$009c to 6000009c BT.W #$009c
+	PL_ENDIF
+
+	PL_IFC2X	1
+	PL_PSS	$13710,strafe_start,26 ; enable strafe mode for each player while shooting; AGA 4030A520;ECS 4038A710
+	PL_ENDIF
+
+	PL_IFC2X	2
+	PL_PS	$136F6,players_rotate_start			;AGA 4030A506 ;ECS 4038A6F6
+	PL_ENDIF
+; ztronzo patches END
+
 	PL_END
 
 
@@ -306,6 +324,120 @@ keyboard:
 .noquit
     movem.l (a7)+,d0
     rts
+
+;--------------------------------
+players_rotate_start
+		cmpa.L #$00DFF00C,A2
+		beq		.check_port4 ; player 1
+
+		clr.l d0 ; no move
+.check_port3_up		btst    #0,$bfe101
+		bne .check_port3_down
+		eor.w     #$0100,d0 		; joy3 up
+.check_port3_down		btst    #1,$bfe101
+		bne .check_port3_left
+		eor.w     #$0001,d0 		; joy3 down
+.check_port3_left		btst    #2,$bfe101
+		bne .check_port3_right
+		eor.w     #$0300,d0 		; joy3 left
+.check_port3_right	btst    #3,$bfe101
+		bne .check_port3_end
+		eor.w     #$0003,d0 		; joy3 right
+.check_port3_end
+		bra		.check_port4_end
+
+.check_port4
+		clr.l d0 ; no move
+.check_port4_up		btst    #4,$bfe101
+		bne .check_port4_down
+		eor.w     #$0100,d0 		; joy4 up
+.check_port4_down		btst    #5,$bfe101 
+		bne .check_port4_left
+		eor.w     #$0001,d0 		; joy4 down
+.check_port4_left		btst    #6,$bfe101
+		bne .check_port4_right
+		eor.w     #$0300,d0 		; joy4 left
+.check_port4_right	btst    #7,$bfe101
+		bne .check_port4_end
+		eor.w     #$0003,d0 		; joy4 right
+.check_port4_end
+
+	CLR.W D1
+	CMP.W #$0100,D0
+	BEQ.B .player_rotate
+	ADD.W #$01,D1
+	CMP.W #$0103,D0
+	BEQ.B .player_rotate
+	ADD.W #$01,D1
+	CMP.W #$0003,D0
+	BEQ.B .player_rotate
+	ADD.W #$01,D1
+	CMP.W #$0002,D0
+	BEQ.B .player_rotate
+	ADD.W #$01,D1	
+	CMP.W #$0001,D0
+	BEQ.B .player_rotate
+	ADD.W #$01,D1
+	CMP.W #$0301,D0
+	BEQ.B .player_rotate
+	ADD.W #$01,D1
+	CMP.W #$0300,D0
+	BEQ.B .player_rotate
+	ADD.W #$01,D1
+	CMP.W #$0200,D0
+	BEQ.B .player_rotate
+	BRA	.player_rotate_end
+
+.player_rotate
+	move.w D1,$66(A0)
+	move.w D1,$68(A0)
+.player_rotate_end
+	MOVEA.L $62(A0),A1
+	CLR.L D0
+	rts
+
+
+strafe_start
+	;cmpa.L #$00DFF00C,A2
+    cmp.W   #$f00c,$74(A0)
+	bne.b	.strafe_check_player2
+	;beq.b	.strafe_check_player1
+	;bt.b .no_strafe
+
+.strafe_check_player1
+	BTST.B #$07,$00bfe001
+	beq.b	.strafe_player1
+	bra.b .no_strafe
+	
+.strafe_check_player2
+	BTST.B #$06,$00bfe001	
+	beq.b	.strafe_player2
+	bra.b .no_strafe
+		
+.strafe_player1
+	cmpa.L #$00DFF00C,A2
+	bne.b	.strafe_done
+
+.strafe_player2
+	cmpa.L #$00DFF00C,A2
+	beq.b	.strafe_done
+	
+.no_strafe 	; restoring original instructions without strafe START
+	TST.W D0
+	BPL.B .no_strafe_cmp2
+	NEG.W D0
+.no_strafe_cmp1	CMP.W #$0004,D0
+	BHI.B .no_strafe_sub
+	bra.B .no_strafe_add
+.no_strafe_cmp2	CMP.W #$0004,D0
+	BMI.B .no_strafe_sub
+	bra.B .no_strafe_add
+.no_strafe_sub	SUB.W #$01,$0068(A0)
+	bra.B .strafe_done
+.no_strafe_add	ADD.W #$01,$0068(A0) 	; restoring original instructions without strafe END
+	
+.strafe_done
+	rts
 
 ;--------------------------------
 
